@@ -1,0 +1,83 @@
+    name: "Compare Old Behaviour to New Behaviour"
+    on:
+        push:
+            branches:
+              - main        
+        workflow_dispatch:
+    jobs:
+        pr829:
+            name: pr829
+            runs-on: ubuntu-22.04
+            steps:
+                - run: |
+                    pwd
+                    tree .
+                - uses: actions/checkout@v4
+                - run: |
+                    pwd
+                    tree .                
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: '3.10'
+                - uses: actions/setup-node@v4
+                - uses: actions/cache@v4
+                  with:
+                    path: ~/.cache/pip
+                    key: ${{ runner.os }}-pip
+                - name: Install python dependencies
+                  run: |
+                    pip install notebook jupytext
+                - name: Install node dependencies
+                  run: |
+                    npm ci
+                - name: Checkout build123d dev branch and build
+                  run: |
+                    git clone --branch dev https://github.com/gumyr/build123d /tmp/build123d-dev
+                    cd /tmp/build123d-dev
+                    pip install -e .
+                - name: Execute jupyter notebooks on dev branch
+                  run: |
+                    set -x
+                    INPUTS_FOLDER="inputs"
+                    OUTPUTS_FOLDER="generated_outputs"
+                    mkdir -p $OUTPUTS_FOLDER
+                    for file in $INPUTS_FOLDER/*.py; do
+                      STEM=$(basename "$file" .py) 
+                      jupytext --to notebook $INPUTS_FOLDER/${STEM}.py --output $OUTPUTS_FOLDER/${STEM}.ipynb                      
+                      jupyter nbconvert --to notebook --execute --output ${STEM}_dev_executed.ipynb $OUTPUTS_FOLDER/${STEM}.ipynb
+                      jupyter nbconvert --to html --execute --output ${STEM}_dev.html  $OUTPUTS_FOLDER/${STEM}.ipynb                                            
+                    done                
+                - name: Checkout victorpoughon/build123d fix_async_display branch
+                  run: |
+                    git clone --branch fix_async_display https://github.com/victorpoughon/build123d /tmp/build123d-fix_async_display
+                    pip uninstall -y build123d
+                    cd /tmp/build123d-fix_async_display
+                    pip install -e .
+                - name: Execute jupyter notebooks on pr
+                  run: |
+                    set -x
+                    INPUTS_FOLDER="inputs"
+                    OUTPUTS_FOLDER="generated_outputs"
+                    mkdir -p $OUTPUTS_FOLDER
+                    for file in $INPUTS_FOLDER/*.py; do
+                      STEM=$(basename "$file" .py) 
+                      jupytext --to notebook $INPUTS_FOLDER/${STEM}.py --output $OUTPUTS_FOLDER/${STEM}.ipynb                      
+                      jupyter nbconvert --to notebook --execute --output ${STEM}_pr_executed.ipynb $OUTPUTS_FOLDER/${STEM}.ipynb
+                      jupyter nbconvert --to html --execute --output ${STEM}_pr.html  $OUTPUTS_FOLDER/${STEM}.ipynb                                            
+                    done                
+                - name: Generate rendered images of html
+                  run: |
+                    node render.js
+                - name: Generated outputs
+                  run: |
+                    tree .
+                    
+
+                - run: |
+                    git config user.name "github-actions[bot]"
+                    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                    git add -f generated_outputs
+                    git commit -m "github action ${{github.run_number}}"
+                    git push
+                
+                    
